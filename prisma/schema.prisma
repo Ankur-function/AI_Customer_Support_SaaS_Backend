@@ -1,0 +1,161 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Enums for strict validation at the database level
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SenderType {
+  CUSTOMER
+  AGENT
+  AI
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique // Unique slug for tenant routing (e.g., /org/swiggy)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users     User[]   // One organization can have multiple users (owners, admins, agents)
+  invitations Invitation[] // ◄--- Add this line to link invitations to the organization
+
+  // NEW RELATIONS
+  customers   Customer[]   // An organization has many customers
+  tickets     Ticket[]     // An organization contains many support tickets
+  documents Document[]     // An organization contains many documents
+}
+
+// Define the allowed roles using an Enum
+enum Role {
+  owner
+  admin
+  agent
+}
+
+model User {
+  id             String       @id @default(uuid())
+  name           String
+  email          String       @unique
+  password       String
+  role           Role         @default(agent)
+  organizationId String       // Foreign key pointing to Organization
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // NEW RELATION
+  assignedTickets Ticket[]    // An agent can be assigned to many tickets
+  documents Document[]        // one user can create many documents
+}
+
+model Invitation {
+  id             String       @id @default(uuid())
+  email          String
+  role           Role         @default(agent)
+  token          String       @unique // Secure random string sent to the agent
+  organizationId String
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Composite unique constraint: A company can't invite the same email multiple times simultaneously
+  @@unique([email, organizationId]) 
+}
+
+// 3. Brand New Feature 3 Models
+model Customer {
+  id             String       @id @default(uuid())
+  name           String
+  email          String
+  phone          String?
+  organizationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tickets        Ticket[]     // A customer can raise multiple tickets
+
+  // Security constraint: A single email cannot have duplicate customer profiles under the same company
+  @@unique([email, organizationId])
+}
+
+model Ticket {
+  id             String         @id @default(uuid())
+  subject        String
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
+  organizationId String
+  customerId     String
+  assignedUserId String?        // Nullable because a ticket can be unassigned initially
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // Relations
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedTo     User?          @relation(fields: [assignedUserId], references: [id], onDelete: SetNull) // If an agent is deleted, don't lose the ticket history!
+  messages       Message[]      // A ticket acts as a thread container for many messages
+}
+
+model Message {
+  id         String     @id @default(uuid())
+  ticketId   String
+  body       String     @db.Text // Optimized for long-form textual responses/chat paragraphs
+  senderType SenderType
+  senderId   String     // Can store customerId, userId, or an 'AI_BOT_ID' string later
+  createdAt  DateTime   @default(now())
+
+  // Relations
+  ticket     Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id             String       @id @default(uuid())
+  organizationId String
+  title          String
+  content        String       // Holds the main article text/markdown
+  category       String       // e.g., "Billing", "Shipping", "Account Access"
+  isPublished    Boolean      @default(true)
+  createdById    String
+
+// ◄--- NEW GEMINI AI VECTOR FIELD ---►
+  // Configured for 768 dimensions to match Gemini's standard dense vector output size
+  embedding      Unsupported("vector(768)")?
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+}
