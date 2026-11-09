@@ -20,7 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
-  origin: 'http://localhost:5173', // Allow your exact Vite frontend server to talk to us
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173', // Allow your exact Vite frontend server to talk to us
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // Allow these request types
   allowedHeaders: ['Content-Type', 'Authorization'], // ◄--- THIS FIXES YOUR ERROR EXPLICITLY!
   credentials: true // Allows HTTP cookies/headers to transfer across endpoints smoothly
