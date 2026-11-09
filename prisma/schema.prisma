@@ -5,10 +5,12 @@
 
 datasource db {
   provider = "postgresql"
+  extensions = [vector]
 }
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 // 1. Enums for strict validation at the database level
